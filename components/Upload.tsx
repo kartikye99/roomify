@@ -1,10 +1,12 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useOutletContext } from "react-router";
 import { CheckCircle2, ImageIcon, UploadIcon } from "lucide-react";
 import {
     PROGRESS_INTERVAL_MS,
     PROGRESS_STEP,
     REDIRECT_DELAY_MS,
+    MAX_UPLOAD_SIZE_BYTES,
+    ALLOWED_IMAGE_TYPES,
 } from "../lib/constants";
 
 type UploadProps = {
@@ -16,14 +18,51 @@ type AuthContext = {
 };
 
 const Upload: React.FC<UploadProps> = ({ onComplete }) => {
-    const [file, setFile] = useState<File | null>(null);
-    const [isDragging, setIsDragging] = useState(false);
-    const [progress, setProgress] = useState(0);
-
     const { isSignedIn } = useOutletContext<AuthContext>();
+
+    const [file, setFile] = useState<File | null>(null);
+    const [progress, setProgress] = useState(0);
+    const [isDragging, setIsDragging] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    const progressIntervalRef = useRef<number | null>(null);
+    const redirectTimeoutRef = useRef<number | null>(null);
+
+    // 🔒 Clear timers safely
+    const clearTimers = () => {
+        if (progressIntervalRef.current !== null) {
+            clearInterval(progressIntervalRef.current);
+            progressIntervalRef.current = null;
+        }
+        if (redirectTimeoutRef.current !== null) {
+            clearTimeout(redirectTimeoutRef.current);
+            redirectTimeoutRef.current = null;
+        }
+    };
+
+    // 🧹 Cleanup on unmount
+    useEffect(() => {
+        return () => {
+            clearTimers();
+        };
+    }, []);
 
     const processFile = (file: File) => {
         if (!isSignedIn) return;
+
+        // ✅ VALIDATION GUARD (runs first)
+        if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+            setError("Only JPG and PNG images are allowed.");
+            return;
+        }
+
+        if (file.size > MAX_UPLOAD_SIZE_BYTES) {
+            setError("File size exceeds the maximum allowed limit.");
+            return;
+        }
+
+        setError(null);
+        clearTimers();
 
         setFile(file);
         setProgress(0);
@@ -33,12 +72,12 @@ const Upload: React.FC<UploadProps> = ({ onComplete }) => {
         reader.onload = () => {
             const base64 = reader.result as string;
 
-            const interval = setInterval(() => {
+            progressIntervalRef.current = window.setInterval(() => {
                 setProgress((prev) => {
                     if (prev >= 100) {
-                        clearInterval(interval);
+                        clearTimers();
 
-                        setTimeout(() => {
+                        redirectTimeoutRef.current = window.setTimeout(() => {
                             onComplete(base64);
                         }, REDIRECT_DELAY_MS);
 
@@ -53,18 +92,18 @@ const Upload: React.FC<UploadProps> = ({ onComplete }) => {
     };
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (!isSignedIn || !e.target.files?.[0]) return;
-        processFile(e.target.files[0]);
+        const selectedFile = e.target.files?.[0];
+        if (!selectedFile) return;
+        processFile(selectedFile);
     };
 
     const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
         e.preventDefault();
-        if (!isSignedIn) return;
-
         setIsDragging(false);
 
         const droppedFile = e.dataTransfer.files?.[0];
-        if (droppedFile) processFile(droppedFile);
+        if (!droppedFile) return;
+        processFile(droppedFile);
     };
 
     return (
@@ -99,6 +138,8 @@ const Upload: React.FC<UploadProps> = ({ onComplete }) => {
                         </p>
 
                         <p className="help">Maximum file size 50 MB.</p>
+
+                        {error && <p className="error">{error}</p>}
                     </div>
                 </div>
             ) : (
