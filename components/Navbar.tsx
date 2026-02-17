@@ -11,7 +11,7 @@ const Navbar = () => {
             try{
                 await signOut();
             }catch(e){
-                console.log(`puter signIn error: ${e}`);
+                console.log(`puter signOut error: ${e}`);
             }
             return;
         }
