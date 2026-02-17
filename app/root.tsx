@@ -79,14 +79,14 @@ export default function App() {
     return await refreshAuth();
   }
   const signOut = async () => {
-    puterSignOut();
+    await puterSignOut();
     return await refreshAuth();
   }
   return(
       <main className="min-h-screen bg-background text-foreground relative z-10">
       <Outlet
       context={{...authState,refreshAuth,signIn,signOut}}
-      />;
+      />
       </main>
   )
 }
